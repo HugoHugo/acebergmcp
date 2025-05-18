@@ -102,7 +102,11 @@ async def main():
         logger.info(f"Starting MCP server on port {port}")
         
         # Run the MCP server binding to all interfaces
-        await mcp.run_http_async(host='0.0.0.0', port=port)
+        # Configure server for SSE transport with explicit endpoint
+        await mcp.run_sse_async(
+            host='0.0.0.0', 
+            port=port
+        )
     except Exception as e:
         logger.error(f"Error starting Iceberg MCP Server: {str(e)}")
         sys.exit(1)
