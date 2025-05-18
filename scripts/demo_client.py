@@ -27,9 +27,6 @@ async def run_demo():
         client = Client(transport)
         
         async with client:
-            # Get server info
-            server_info = await client.get_info()
-            logger.info(f"Connected to MCP server: {server_info.name} (v{server_info.version})")
             
             # List available tools
             tools = await client.list_tools()
