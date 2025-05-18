@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 import os
 import sys
 import logging
+import asyncio
 
 def setup_logging():
     """Set up logging configuration"""
@@ -78,7 +79,7 @@ def load_config():
     
     return config
 
-def main():
+async def main():
     """Main entry point for the application"""
     try:
         # Set up logging
@@ -100,12 +101,11 @@ def main():
         port = int(os.getenv("MCP_SERVER_PORT", "8000"))
         logger.info(f"Starting MCP server on port {port}")
         
-        # Run the MCP server
-        # Note: FastMCP doesn't use the port parameter, it's just for logging
-        mcp.run()
+        # Run the MCP server binding to all interfaces
+        await mcp.run_http_async(host='0.0.0.0', port=port)
     except Exception as e:
         logger.error(f"Error starting Iceberg MCP Server: {str(e)}")
         sys.exit(1)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

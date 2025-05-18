@@ -1,6 +1,6 @@
 # requirements.txt
-mcp>=0.1.0  # or fastmcp>=2.0.0 for easier development
-pyiceberg==0.7.1  # Latest PyIceberg that supports Iceberg 1.7.0
+fastmcp>=2.0.0
+pyiceberg==0.8.0  # Updated version that includes the identity transform
 pydantic>=2.0
 python-dotenv  # for configuration
 typing-extensions>=4.0

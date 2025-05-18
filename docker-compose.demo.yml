@@ -1,0 +1,125 @@
+services:
+  # MinIO for S3 storage
+  minio:
+    image: minio/minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # MinIO setup (create buckets and set policies)
+  minio-setup:
+    image: minio/mc
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      /usr/bin/mc config host add myminio http://minio:9000 minioadmin minioadmin;
+      /usr/bin/mc mb myminio/warehouse;
+      /usr/bin/mc policy set public myminio/warehouse;
+      exit 0;
+      "
+
+  # Iceberg REST Catalog
+  iceberg-rest:
+    image: tabulario/iceberg-rest:0.7.0
+    ports:
+      - "8181:8181"
+    environment:
+      CATALOG_WAREHOUSE: s3://warehouse/
+      CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
+      CATALOG_S3__ENDPOINT: http://minio:9000
+      CATALOG_S3__PATH__STYLE__ACCESS: "true"
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_REGION: us-east-1
+    depends_on:
+      - minio
+      - minio-setup
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8181/v1/config"]
+      interval: 15s
+      timeout: 30s
+      retries: 10
+      start_period: 30s
+
+  # Create sample table
+  create-sample-table:
+    build:
+      context: .
+      dockerfile: Dockerfile.scripts
+    environment:
+      ICEBERG_CATALOG_NAME: demo
+      ICEBERG_CATALOG_URI: http://iceberg-rest:8181
+    command: >
+      /bin/sh -c "
+      echo 'Waiting for REST catalog to be ready...';
+      while ! curl -f http://iceberg-rest:8181/v1/config; do sleep 2; done;
+      echo 'Creating sample table...';
+      python /app/scripts/create_sample_table.py
+      "
+    depends_on:
+      - iceberg-rest
+
+  # Insert sample data
+  insert-sample-data:
+    build:
+      context: .
+      dockerfile: Dockerfile.scripts
+    environment:
+      ICEBERG_CATALOG_NAME: demo
+      ICEBERG_CATALOG_URI: http://iceberg-rest:8181
+    command: python /app/scripts/insert_sample_data.py 100
+    depends_on:
+      - create-sample-table
+
+  # Iceberg MCP Server
+  iceberg-mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      ICEBERG_CATALOG_NAME: demo
+      ICEBERG_CATALOG_TYPE: rest
+      ICEBERG_CATALOG_URI: http://iceberg-rest:8181
+      MCP_SERVER_HOST: 0.0.0.0
+      MCP_SERVER_PORT: 8000
+      LOG_LEVEL: INFO
+    depends_on:
+      - insert-sample-data
+    volumes:
+      - ./logs:/app/logs
+
+  # Demo client
+  demo-client:
+    build:
+      context: .
+      dockerfile: Dockerfile.client
+    environment:
+      MCP_SERVER_URL: http://iceberg-mcp-server:8000
+    depends_on:
+      - iceberg-mcp-server
+    # The client will start after a delay to ensure the MCP server is ready
+    command: >
+      /bin/sh -c "
+      echo 'Waiting for MCP server to start...';
+      sleep 30;
+      echo 'Running demo client...';
+      python /app/scripts/demo_client.py;
+      "
+
+volumes:
+  minio-data:

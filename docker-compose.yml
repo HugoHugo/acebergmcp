@@ -1,0 +1,88 @@
+services:
+  # MinIO for S3 storage
+  minio:
+    image: minio/minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 20s
+      retries: 10
+
+  # MinIO setup (create buckets and set policies)
+  minio-setup:
+    image: minio/mc
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      # Configure MinIO client
+      /usr/bin/mc config host add myminio http://minio:9000 minioadmin minioadmin;
+      
+      # Create warehouse bucket if it doesn't exist
+      /usr/bin/mc ls myminio/warehouse || /usr/bin/mc mb myminio/warehouse;
+      
+      # Set bucket policies
+      /usr/bin/mc anonymous set public myminio/warehouse;
+      
+      # Configure notification
+      /usr/bin/mc admin config set myminio/ notify_webhook:1 endpoint='http://minio:9000' queue_dir='/events' queue_limit='10000';
+      
+      echo 'MinIO setup completed successfully.';
+      exit 0;
+      "
+
+  # Iceberg REST Catalog
+  iceberg-rest:
+    image: tabulario/iceberg-rest:0.7.0
+    ports:
+      - "8181:8181"
+    environment:
+      CATALOG_WAREHOUSE: s3://warehouse
+      CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
+      CATALOG_S3__ENDPOINT: http://minio:9000
+      CATALOG_S3__BUCKET: warehouse
+      CATALOG_S3__PATH_STYLE_ACCESS: "true"
+      CATALOG_S3__SSL_ENABLED: "false"
+      CATALOG_S3__ACCESS_KEY_ID: minioadmin
+      CATALOG_S3__SECRET_ACCESS_KEY: minioadmin
+      CATALOG_S3__REGION: us-east-1
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_REGION: us-east-1
+    depends_on:
+      minio:
+        condition: service_healthy
+      minio-setup:
+        condition: service_completed_successfully
+
+  # Iceberg MCP Server
+  iceberg-mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      ICEBERG_CATALOG_NAME: demo
+      ICEBERG_CATALOG_TYPE: rest
+      ICEBERG_CATALOG_URI: http://iceberg-rest:8181
+      MCP_SERVER_PORT: 8000
+      LOG_LEVEL: INFO
+    depends_on:
+      - iceberg-rest
+    volumes:
+      - ./logs:/app/logs
+
+volumes:
+  minio-data:
+

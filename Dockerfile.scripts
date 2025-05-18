@@ -1,0 +1,18 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
+# Install Python packages
+RUN pip install --no-cache-dir pyiceberg pyarrow
+
+# Copy scripts
+COPY scripts/ ./scripts/
+
+# Set execute permissions
+RUN chmod +x ./scripts/*.py
+
+# Default command (can be overridden)
+CMD ["python", "/app/scripts/create_sample_table.py"]
