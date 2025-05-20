@@ -39,8 +39,8 @@ services:
     environment:
       CATALOG_WAREHOUSE: s3://warehouse/
       CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
-      CATALOG_S3__ENDPOINT: http://minio:9000
-      CATALOG_S3__PATH__STYLE__ACCESS: "true"
+      CATALOG_S3_ENDPOINT: http://minio:9000
+      CATALOG_S3_PATH__STYLE__ACCESS: "true"
       AWS_ACCESS_KEY_ID: minioadmin
       AWS_SECRET_ACCESS_KEY: minioadmin
       AWS_REGION: us-east-1
@@ -65,9 +65,9 @@ services:
     command: >
       /bin/sh -c "
       echo 'Waiting for REST catalog to be ready...';
-      while ! curl -f http://iceberg-rest:8181/v1/config; do sleep 2; done;
+      until curl -sf http://iceberg-rest:8181/v1/config; do sleep 2; done;
       echo 'Creating sample table...';
-      python /app/scripts/create_sample_table.py
+      python /app/scripts/create_sample_table.py;
       "
     depends_on:
       - iceberg-rest
@@ -80,7 +80,17 @@ services:
     environment:
       ICEBERG_CATALOG_NAME: demo
       ICEBERG_CATALOG_URI: http://iceberg-rest:8181
-    command: python /app/scripts/insert_sample_data.py 100
+      S3_ENDPOINT: http://minio:9000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_REGION: us-east-1
+    command: >
+      /bin/sh -c "
+      echo 'Waiting for sample table to exist...';
+      until python /app/scripts/check_table_exists.py; do sleep 2; done;
+      echo 'Inserting sample data...';
+      python /app/scripts/insert_sample_data.py 100;
+      "
     depends_on:
       - create-sample-table
 
@@ -112,7 +122,6 @@ services:
       MCP_SERVER_URL: http://iceberg-mcp-server:8000
     depends_on:
       - iceberg-mcp-server
-    # The client will start after a delay to ensure the MCP server is ready
     command: >
       /bin/sh -c "
       echo 'Waiting for MCP server to start...';
@@ -122,4 +131,4 @@ services:
       "
 
 volumes:
-  minio-data:
+  minio-data: {}

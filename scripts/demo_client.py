@@ -17,8 +17,8 @@ async def run_demo():
     """Run the demo client using SSE transport"""
     try:
         # Get MCP server URL from environment or use default
-        port = int(os.getenv("MCP_SERVER_PORT", "8000"))
-        sse_url = f"http://localhost:{port}/sse"
+        host: str = os.getenv("MCP_SERVER_URL")
+        sse_url = f"{host}/sse"
         
         logger.info(f"Connecting to MCP server via SSE at {sse_url}")
         
