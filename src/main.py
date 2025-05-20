@@ -101,15 +101,11 @@ async def main():
         port = int(os.getenv("MCP_SERVER_PORT", "8000"))
         logger.info(f"Starting MCP server on port {port}")
         
-        # Run the MCP server binding to all interfaces
-        # Configure server for SSE transport with explicit endpoint
-        await mcp.run_sse_async(
-            host='0.0.0.0', 
-            port=port
-        )
     except Exception as e:
         logger.error(f"Error starting Iceberg MCP Server: {str(e)}")
         sys.exit(1)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Run the MCP server binding to all interfaces
+    # Configure server for SSE transport with explicit endpoint
+    mcp.run(transport="sse", host="0.0.0.0", port=8000)
